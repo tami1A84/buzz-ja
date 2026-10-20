@@ -24,11 +24,13 @@ class ChannelSectionsState {
 
 class ChannelSectionsNotifier extends Notifier<ChannelSectionsState> {
   ChannelSectionsManager? _manager;
+  bool _isInitialized = false;
 
   @override
   ChannelSectionsState build() {
     _manager?.dispose(flushPending: false);
     _manager = null;
+    _isInitialized = false;
 
     final relayConfig = ref.watch(relayConfigProvider);
     final sessionState = ref.watch(relaySessionProvider);
@@ -61,6 +63,7 @@ class ChannelSectionsNotifier extends Notifier<ChannelSectionsState> {
     late final ChannelSectionsManager manager;
     manager = ChannelSectionsManager(
       pubkey: pubkey,
+      relayUrl: relayConfig.baseUrl,
       prefs: prefs,
       crypto: crypto,
       relaySession: ref.read(relaySessionProvider.notifier),
@@ -85,6 +88,7 @@ class ChannelSectionsNotifier extends Notifier<ChannelSectionsState> {
     Future.microtask(() async {
       await manager.initialize();
       if (_manager != manager) return;
+      _isInitialized = true;
       _emitManagerState(manager);
     });
 
@@ -116,7 +120,7 @@ class ChannelSectionsNotifier extends Notifier<ChannelSectionsState> {
   void _emitManagerState(ChannelSectionsManager manager) {
     if (_manager != manager) return;
     state = ChannelSectionsState(
-      isReady: true,
+      isReady: _isInitialized,
       store: manager.store,
       version: state.version + 1,
     );
