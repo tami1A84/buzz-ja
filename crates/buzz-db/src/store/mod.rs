@@ -18,6 +18,8 @@ pub mod community;
 pub mod deletion;
 /// Direct message channel persistence.
 pub mod dm;
+/// Operator-global synthetic user-deletion request intake.
+pub mod entity_deletion;
 /// Event storage and retrieval.
 pub mod event;
 /// App-owned push enqueue and channel TTL refresh for inserted events.
@@ -80,6 +82,9 @@ mod artifact_query;
 
 #[cfg(test)]
 mod artifact_postgres_tests;
+
+#[cfg(test)]
+mod legacy_channel_types_postgres_tests;
 
 #[cfg(test)]
 mod admission_postgres_tests;

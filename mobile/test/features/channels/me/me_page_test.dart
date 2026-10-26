@@ -40,7 +40,65 @@ class FakeChannels extends ChannelsNotifier {
   ];
 }
 
+class LabeledChannels extends ChannelsNotifier {
+  @override
+  Future<List<Channel>> build() async => [
+    for (final (id, name, owner, member) in [
+      ('filed', 'Filed labeled chat', 'owner', true),
+      ('loose', 'Unfiled labeled chat', 'owner', true),
+      ('shared', 'Someone else chat', 'other', true),
+      ('hidden', 'Inaccessible labeled chat', 'owner', false),
+    ])
+      Channel(
+        id: id,
+        name: name,
+        channelType: 'stream',
+        visibility: 'private',
+        labels: const ['buzz.solo'],
+        description: '',
+        createdBy: owner,
+        createdAt: DateTime(2026),
+        memberCount: 2,
+        isMember: member,
+      ),
+  ];
+}
+
 void main() {
+  testWidgets('label-only desktop chats appear in projects and unfiled chats', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          myPubkeyProvider.overrideWithValue('owner'),
+          channelsProvider.overrideWith(LabeledChannels.new),
+          meGroupsProvider.overrideWith(
+            (ref) => Stream.value(
+              const MeGroups(
+                groups: [
+                  {
+                    'id': 'project',
+                    'name': 'App work',
+                    'defaultTemplateId': '',
+                  },
+                ],
+                assignments: {'filed': 'project'},
+              ),
+            ),
+          ),
+        ],
+        child: MaterialApp(theme: AppTheme.light(), home: const MePage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Filed labeled chat'), findsOneWidget);
+    expect(find.text('Unfiled labeled chat'), findsOneWidget);
+    expect(find.text('Someone else chat'), findsNothing);
+    expect(find.text('Inaccessible labeled chat'), findsNothing);
+    expect(find.text('A place to work with your agents'), findsNothing);
+  });
+
   testWidgets('empty workspace stays centered behind the New chat keyboard', (
     tester,
   ) async {
@@ -143,7 +201,7 @@ void main() {
     },
   );
   testWidgets(
-    'footer new chat action opens both fields in one dismissible sheet',
+    'footer new chat offers project selection without losing its name',
     (tester) async {
       final action = ValueNotifier<VoidCallback?>(null);
       addTearDown(action.dispose);
@@ -162,7 +220,17 @@ void main() {
         ProviderScope(
           overrides: [
             meGroupsProvider.overrideWith(
-              (ref) => Stream.value(const MeGroups()),
+              (ref) => Stream.value(
+                const MeGroups(
+                  groups: [
+                    {
+                      'id': 'mobile',
+                      'name': 'Mobile app',
+                      'defaultTemplateId': '',
+                    },
+                  ],
+                ),
+              ),
             ),
             meSyncProvider.overrideWithValue(sync),
             channelsProvider.overrideWith(FakeChannels.new),
@@ -192,6 +260,16 @@ void main() {
         find.byKey(const ValueKey('new-session-name')),
         'Design session',
       );
+      await tester.tap(find.byKey(const ValueKey('new-session-project')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mobile app').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Design session'), findsOneWidget);
+      expect(find.text('Mobile app'), findsWidgets);
+      await tester.tap(find.byKey(const ValueKey('new-session-project')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('No project').last);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Create chat'));
       await tester.pumpAndSettle();
       expect(find.text('Enter a name and choose an agent.'), findsOneWidget);
@@ -199,7 +277,7 @@ void main() {
     },
   );
 
-  testWidgets('iOS new chat uses the native profile form with both fields', (
+  testWidgets('iOS new chat uses the native profile form with project choices', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
@@ -234,7 +312,17 @@ void main() {
       ProviderScope(
         overrides: [
           meGroupsProvider.overrideWith(
-            (ref) => Stream.value(const MeGroups()),
+            (ref) => Stream.value(
+              const MeGroups(
+                groups: [
+                  {
+                    'id': 'mobile',
+                    'name': 'Mobile app',
+                    'defaultTemplateId': '',
+                  },
+                ],
+              ),
+            ),
           ),
           meSyncProvider.overrideWithValue(sync),
           channelsProvider.overrideWith(FakeChannels.new),
@@ -260,6 +348,10 @@ void main() {
     expect(args['title'], 'New chat');
     expect(args['placeholder'], 'Chat name');
     expect(args['assistants'], isEmpty);
+    expect(args['projects'], [
+      {'id': 'mobile', 'name': 'Mobile app'},
+    ]);
+    expect(args['selectedProject'], isNull);
     expect(args['containerCornerRadius'], Radii.container);
     expect(find.byType(BottomSheet), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -305,6 +397,7 @@ void main() {
         'same-id',
         'Unfinished chat',
         'agent',
+        project: 'mobile',
       ).save(sync);
       final restarted = MeSync(
         RelaySessionNotifier(),
@@ -343,6 +436,7 @@ void main() {
       expect(args['title'], 'New chat');
       expect(args['initialValue'], resume ? 'Unfinished chat' : '');
       expect(args['selectedAssistant'], resume ? 'agent' : isNull);
+      expect(args['selectedProject'], resume ? 'mobile' : isNull);
       expect(args['fieldsLocked'], resume);
       expect(args['error'], resume ? contains('Resume') : isNull);
       expect(
